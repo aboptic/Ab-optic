@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang='fr'>
+<head>
+<meta charset='UTF-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+<title>AB Optique - Espace réservé</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;background:#f7f7f9;color:#222;padding:16px;max-width:900px;margin:auto}
+h1,h2{margin:14px 0 8px}
+.box{background:#fff;border-radius:10px;padding:16px;box-shadow:0 2px 6px rgba(0,0,0,.1);margin-bottom:14px}
+input{width:100%;padding:10px;margin:6px 0 12px;border:1px solid #ccc;border-radius:6px;font-size:15px}
+.btn{background:#2a7fba;color:#fff;border:none;padding:9px 14px;border-radius:6px;cursor:pointer;font-size:14px;margin:4px 4px 0 0}
+.btn.ok{background:#2e8b57}
+.btn.no{background:#c0392b}
+.btn.out{background:#777}
+table{width:100%;border-collapse:collapse}
+th,td{padding:8px;border-bottom:1px solid #eee;text-align:left;font-size:14px}
+.tag{display:inline-block;padding:2px 8px;border-radius:10px;background:#eef6fc;font-size:13px}
+img.rc{max-width:160px;border:1px solid #ccc;border-radius:6px;margin-top:8px}
+</style>
+</head>
+<body>
+<h1>AB Optique - Espace réservé</h1>
+
+<div id='login' class='box'>
+  <input id='em' type='email' placeholder='E-mail'>
+  <input id='pw' type='password' placeholder='Mot de passe'>
+  <button class='btn' id='go'>Connexion</button>
+  <p id='msg'></p>
+</div>
+
+<div id='app' style='display:none'>
+  <button class='btn out' id='bye'>Déconnexion</button>
+  <h2>Comptes</h2>
+  <div class='box' style='overflow-x:auto'><table id='stats'></table></div>
+  <h2>Commandes</h2>
+  <div id='list'></div>
+</div>
+
+<script type='module'>
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/13.4.0/firebase-app.js';
+import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/13.4.0/firebase-auth.js';
+import { getFirestore, collection, onSnapshot, doc, updateDoc } from 'https://www.gstatic.com/firebasejs/13.4.0/firebase-firestore.js';
+
+const firebaseConfig = {
+  apiKey: 'AIzaSyA_jCartiuNU73OO-NWCvM0g0aPRcNRbNc',
+  authDomain: 'aboptic.firebaseapp.com',
+  projectId: 'aboptic',
+  storageBucket: 'aboptic.firebasestorage.app',
+  messagingSenderId: '538771807407',
+  appId: '1:538771807407:web:95de52ca862f2f6f26485a'
+};
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const LABEL = {en_attente:'En attente du reçu', recu_envoye:'Reçu à vérifier', valide:'Validée (70 % payé)', livre:'Livrée (100 % payé)', refuse:'Refusée'};
+let orders = [];
+
+$('go').onclick = async () => {
+  try{ await signInWithEmailAndPassword(auth, $('em').value.trim(), $('pw').value); }
+  catch(e){ $('msg').textContent = 'E-mail ou mot de passe incorrect.'; }
+};
+$('bye').onclick = () => signOut(auth);
+
+onAuthStateChanged(auth, user => {
+  $('login').style.display = user ? 'none' : 'block';
+  $('app').style.display = user ? 'block' : 'none';
+  if(user){
+    onSnapshot(collection(db, 'orders'), snap => {
+      orders = snap.docs.map(d => d.data()).sort((a, b) => b.createdAt - a.createdAt);
+      render();
+    }, () => { $('list').innerHTML = '<p>Accès refusé. Vérifie l e-mail dans les règles Firestore.</p>'; });
+  }
+});
+
+function fmt(n){ return n.toLocaleString() + ' FDJ'; }
+
+function render(){
+  const now = new Date();
+  const d = new Date(now);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  const week = d.getTime();
+  const month = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+
+  const paid = o => o.status === 'valide' || o.status === 'livre';
+  const calc = from => {
+    const v = orders.filter(o => paid(o) && o.validatedAt >= from);
+    const l = orders.filter(o => o.status === 'livre' && o.deliveredAt >= from);
+    return {n:v.length, p70:v.reduce((s, o) => s + o.part1, 0), p30:l.reduce((s, o) => s + o.part2, 0)};
+  };
+  const w = calc(week), m = calc(month);
+  const due = orders.filter(o => o.status === 'valide').reduce((s, o) => s + o.part2, 0);
+  const toCheck = orders.filter(o => o.status === 'recu_envoye').length;
+
+  $('stats').innerHTML = `
+    <tr><th></th><th>Cette semaine</th><th>Ce mois-ci</th></tr>
+    <tr><td>Commandes validées</td><td>${w.n}</td><td>${m.n}</td></tr>
+    <tr><td>70 % encaissés (WAAFI)</td><td>${fmt(w.p70)}</td><td>${fmt(m.p70)}</td></tr>
+    <tr><td>30 % encaissés (livraison)</td><td>${fmt(w.p30)}</td><td>${fmt(m.p30)}</td></tr>
+    <tr><td><b>Total encaissé</b></td><td><b>${fmt(w.p70 + w.p30)}</b></td><td><b>${fmt(m.p70 + m.p30)}</b></td></tr>
+    <tr><td>30 % restant à encaisser</td><td colspan='2'>${fmt(due)}</td></tr>
+    <tr><td>Reçus à vérifier</td><td colspan='2'>${toCheck}</td></tr>`;
+
+  $('list').innerHTML = orders.map(o => {
+    const items = (o.items || []).map(i => esc(i.name) + ' x ' + esc(i.qty)).join('<br>');
+    const img = (o.receipt && String(o.receipt).startsWith('data:image/')) ? `<br><a href='${o.receipt}' target='_blank'><img class='rc' src='${o.receipt}'></a>` : '';
+    let btn = '';
+    if(o.status === 'recu_envoye'){ btn = `<button class='btn ok' data-act='valide' data-id='${esc(o.id)}'>Valider le reçu</button><button class='btn no' data-act='refuse' data-id='${esc(o.id)}'>Refuser</button>`; }
+    if(o.status === 'en_attente'){ btn = `<button class='btn no' data-act='refuse' data-id='${esc(o.id)}'>Refuser</button>`; }
+    if(o.status === 'valide'){ btn = `<button class='btn ok' data-act='livre' data-id='${esc(o.id)}'>Livrée, 30 % encaissés</button>`; }
+    return `<div class='box'>
+      <b>${esc(o.id)}</b> <span class='tag'>${LABEL[o.status] || esc(o.status)}</span> - ${new Date(o.createdAt).toLocaleDateString('fr-FR')}<br>
+      ${esc(o.name)} - ${esc(o.phone)}<br>${esc(o.address)}<br><br>
+      ${items}<br><br>
+      Total ${fmt(o.total)} : 70 % = ${fmt(o.part1)}, 30 % = ${fmt(o.part2)}<br>
+      Ordonnance : ${esc(o.rx || 'envoyée en photo')}${img}<br>${btn}
+    </div>`;
+  }).join('') || '<p>Aucune commande pour le moment.</p>';
+}
+
+document.addEventListener('click', async e => {
+  const b = e.target.closest('[data-act]');
+  if(!b){ return; }
+  const act = b.dataset.act;
+  const patch = {status:act};
+  if(act === 'valide'){ patch.validatedAt = Date.now(); }
+  if(act === 'livre'){ patch.deliveredAt = Date.now(); }
+  try{ await updateDoc(doc(db, 'orders', b.dataset.id), patch); }
+  catch(err){ alert('Erreur, réessaie.'); }
+});
+</script>
+</body>
+</html>
