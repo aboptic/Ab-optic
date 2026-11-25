@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AB Optique</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;background:#f7f7f9;color:#222}
+header{background:#12355b;color:#fff;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px}
+header h1{font-size:24px}
+header select,header button{padding:8px 12px;border-radius:6px;border:none;font-size:15px;cursor:pointer}
+.hero{background:linear-gradient(135deg,#12355b,#2a7fba);color:#fff;text-align:center;padding:50px 20px}
+.hero h2{font-size:30px;margin-bottom:10px}
+main{max-width:1000px;margin:auto;padding:20px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:18px}
+.card{background:#fff;border-radius:10px;padding:14px;box-shadow:0 2px 6px rgba(0,0,0,.1);text-align:center}
+.card .img{font-size:60px;margin:10px 0}
+.card h3{margin:6px 0}
+.price{color:#12355b;font-weight:bold;margin:8px 0}
+.btn{background:#2a7fba;color:#fff;border:none;padding:10px 16px;border-radius:6px;cursor:pointer;font-size:15px}
+.btn:hover{background:#12355b}
+section{margin-top:30px}
+section h2{margin-bottom:12px}
+.box{background:#fff;border-radius:10px;padding:18px;box-shadow:0 2px 6px rgba(0,0,0,.1)}
+.row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #eee;gap:8px}
+input,textarea{width:100%;padding:10px;margin:6px 0 12px;border:1px solid #ccc;border-radius:6px;font-size:15px}
+.pay{background:#eef6fc;border-left:4px solid #2a7fba;padding:12px;margin:12px 0;border-radius:6px}
+footer{text-align:center;padding:20px;color:#666;margin-top:30px}
+[dir=rtl]{text-align:right}
+</style>
+</head>
+<body>
+<header>
+  <h1>AB Optique</h1>
+  <div>
+    <select id="lang" onchange="setLang(this.value)">
+      <option value="fr">Français</option>
+      <option value="en">English</option>
+      <option value="ar">العربية</option>
+    </select>
+    <button onclick="document.getElementById('cart').scrollIntoView()">🛒 <span id="count">0</span></button>
+  </div>
+</header>
+
+<div class="hero">
+  <h2 data-t="heroTitle"></h2>
+  <p data-t="heroText"></p>
+</div>
+
+<main>
+  <section>
+    <h2 data-t="catalog"></h2>
+    <div class="grid" id="products"></div>
+  </section>
+
+  <section id="cart">
+    <h2 data-t="cartTitle"></h2>
+    <div class="box">
+      <div id="cartItems"></div>
+      <p style="margin-top:12px"><b data-t="total"></b> : <span id="total">0</span> FDJ</p>
+      <div class="pay">
+        <p><b data-t="part1"></b> : <span id="p1">0</span> FDJ (WAAFI)</p>
+        <p><b data-t="part2"></b> : <span id="p2">0</span> FDJ</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2 data-t="orderTitle"></h2>
+    <div class="box">
+      <label data-t="name"></label>
+      <input id="cname">
+      <label data-t="phone"></label>
+      <input id="cphone">
+      <label data-t="address"></label>
+      <textarea id="caddr" rows="2"></textarea>
+      <label data-t="rx"></label>
+      <textarea id="crx" rows="3" data-ph="rxHelp"></textarea>
+      <div class="pay">
+        <p data-t="payInfo"></p>
+        <p><b>WAAFI : <span id="waafi">77 64 36 16</span></b></p>
+      </div>
+      <button class="btn" onclick="sendOrder()" data-t="send"></button>
+    </div>
+  </section>
+</main>
+
+<footer>© AB Optique - Djibouti</footer>
+
+<script>
+const WAAFI_NUMBER = "77 64 36 16";   // Remplace par ton numéro WAAFI
+const WHATSAPP = "25377643616";       // Ton numéro WhatsApp avec 253, sans + ni espaces
+
+const products = [
+  {id:1, emoji:"👓", fr:"Monture classique noire", en:"Classic black frame", ar:"إطار كلاسيكي أسود", price:12000},
+  {id:2, emoji:"🕶️", fr:"Monture ronde dorée", en:"Round gold frame", ar:"إطار دائري ذهبي", price:15000},
+  {id:3, emoji:"👓", fr:"Monture légère titane", en:"Light titanium frame", ar:"إطار تيتانيوم خفيف", price:22000},
+  {id:4, emoji:"👓", fr:"Monture enfant colorée", en:"Colorful kids frame", ar:"إطار أطفال ملون", price:9000}
+];
+
+const T = {
+ fr:{heroTitle:"Vos lunettes de vue, livrées chez vous",heroText:"Envoyez votre ordonnance, choisissez votre monture, payez 70 % maintenant et 30 % à la réception.",catalog:"Nos montures",add:"Ajouter",cartTitle:"Mon panier",total:"Total",part1:"À payer maintenant (70 %)",part2:"À payer à la réception (30 %)",orderTitle:"Passer commande",name:"Nom complet",phone:"Téléphone",address:"Adresse de livraison",rx:"Ordonnance de votre opticien (valeurs OD / OG, sphère, cylindre, axe)",rxHelp:"Recopiez votre ordonnance ici. Vous pourrez aussi envoyer la photo par WhatsApp.",payInfo:"Envoyez 70 % du total par WAAFI au numéro ci-dessous, puis validez votre commande.",send:"Envoyer la commande sur WhatsApp",empty:"Votre panier est vide.",remove:"Retirer",fill:"Merci de remplir le nom, le téléphone et l'adresse, et d'ajouter un article."},
+ en:{heroTitle:"Prescription glasses, delivered to your door",heroText:"Send your prescription, pick your frame, pay 70% now and 30% on delivery.",catalog:"Our frames",add:"Add",cartTitle:"My cart",total:"Total",part1:"Pay now (70%)",part2:"Pay on delivery (30%)",orderTitle:"Place your order",name:"Full name",phone:"Phone",address:"Delivery address",rx:"Your optician's prescription (OD / OS values, sphere, cylinder, axis)",rxHelp:"Type your prescription here. You can also send a photo on WhatsApp.",payInfo:"Send 70% of the total by WAAFI to the number below, then confirm your order.",send:"Send order on WhatsApp",empty:"Your cart is empty.",remove:"Remove",fill:"Please fill in name, phone and address, and add an item."},
+ ar:{heroTitle:"نظارات طبية تصلك إلى باب بيتك",heroText:"أرسل وصفتك الطبية، اختر الإطار، ادفع 70٪ الآن و30٪ عند الاستلام.",catalog:"إطاراتنا",add:"أضف",cartTitle:"سلتي",total:"المجموع",part1:"المبلغ الآن (70٪)",part2:"المبلغ عند الاستلام (30٪)",orderTitle:"أكمل الطلب",name:"الاسم الكامل",phone:"الهاتف",address:"عنوان التوصيل",rx:"وصفة طبيب النظارات (القيم OD / OG، الكروية، الأسطوانية، المحور)",rxHelp:"اكتب وصفتك هنا. يمكنك أيضا إرسال صورة عبر واتساب.",payInfo:"أرسل 70٪ من المجموع عبر WAAFI إلى الرقم أدناه ثم أكد طلبك.",send:"أرسل الطلب عبر واتساب",empty:"سلتك فارغة.",remove:"حذف",fill:"يرجى ملء الاسم والهاتف والعنوان وإضافة منتج."}
+};
+
+let lang = "fr";
+let cart = [];
+
+function setLang(l){
+  lang = l;
+  document.documentElement.lang = l;
+  document.documentElement.dir = (l === "ar") ? "rtl" : "ltr";
+  document.querySelectorAll("[data-t]").forEach(e => e.textContent = T[l][e.dataset.t]);
+  document.querySelectorAll("[data-ph]").forEach(e => e.placeholder = T[l][e.dataset.ph]);
+  document.getElementById("waafi").textContent = WAAFI_NUMBER;
+  renderProducts();
+  renderCart();
+}
+
+function renderProducts(){
+  document.getElementById("products").innerHTML = products.map(p => `
+    <div class="card">
+      <div class="img">${p.emoji}</div>
+      <h3>${p[lang]}</h3>
+      <div class="price">${p.price.toLocaleString()} FDJ</div>
+      <button class="btn" onclick="addToCart(${p.id})">${T[lang].add}</button>
+    </div>`).join("");
+}
+
+function addToCart(id){
+  const item = cart.find(c => c.id === id);
+  if(item){ item.qty++; } else { cart.push({id:id, qty:1}); }
+  renderCart();
+}
+
+function removeFromCart(id){
+  cart = cart.filter(c => c.id !== id);
+  renderCart();
+}
+
+function totalAmount(){
+  return cart.reduce((s,c) => s + products.find(p => p.id === c.id).price * c.qty, 0);
+}
+
+function renderCart(){
+  const box = document.getElementById("cartItems");
+  if(cart.length === 0){
+    box.innerHTML = `<p>${T[lang].empty}</p>`;
+  } else {
+    box.innerHTML = cart.map(c => {
+      const p = products.find(x => x.id === c.id);
+      return `<div class="row"><span>${p[lang]} × ${c.qty}</span><span>${(p.price*c.qty).toLocaleString()} FDJ</span><button class="btn" onclick="removeFromCart(${c.id})">${T[lang].remove}</button></div>`;
+    }).join("");
+  }
+  const total = totalAmount();
+  const p1 = Math.round(total * 0.7);
+  document.getElementById("total").textContent = total.toLocaleString();
+  document.getElementById("p1").textContent = p1.toLocaleString();
+  document.getElementById("p2").textContent = (total - p1).toLocaleString();
+  document.getElementById("count").textContent = cart.reduce((s,c) => s + c.qty, 0);
+}
+
+function sendOrder(){
+  const name = document.getElementById("cname").value.trim();
+  const phone = document.getElementById("cphone").value.trim();
+  const addr = document.getElementById("caddr").value.trim();
+  const rx = document.getElementById("crx").value.trim();
+  if(!name || !phone || !addr || cart.length === 0){ alert(T[lang].fill); return; }
+  const total = totalAmount();
+  const p1 = Math.round(total * 0.7);
+  const lines = cart.map(c => {
+    const p = products.find(x => x.id === c.id);
+    return `- ${p.fr} x ${c.qty} = ${p.price*c.qty} FDJ`;
+  }).join("\n");
+  const msg = `Nouvelle commande AB Optique\nNom : ${name}\nTél : ${phone}\nAdresse : ${addr}\n\n${lines}\n\nTotal : ${total} FDJ\n70 % WAAFI : ${p1} FDJ\n30 % à la réception : ${total-p1} FDJ\n\nOrdonnance : ${rx || "envoyée en photo"}`;
+  window.open("https://wa.me/" + WHATSAPP + "?text=" + encodeURIComponent(msg), "_blank");
+}
+
+setLang("fr");
+</script>
+</body>
+</html>
