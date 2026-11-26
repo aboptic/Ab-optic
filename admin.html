@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang='fr'>
+<head>
+<meta charset='UTF-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+<title>Aboptic &amp; services - Admin</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;background:#f7f7f9;color:#222;padding:14px;max-width:900px;margin:auto}
+h1,h2{margin:14px 0 8px}
+.box{background:#fff;border-radius:10px;padding:14px;box-shadow:0 2px 6px rgba(0,0,0,.1);margin-bottom:12px}
+input,select{width:100%;padding:10px;margin:5px 0 10px;border:1px solid #ccc;border-radius:8px;font-size:16px}
+.btn{background:#2a7fba;color:#fff;border:none;padding:10px 14px;border-radius:8px;cursor:pointer;font-size:15px;margin:4px 4px 0 0}
+.btn.ok{background:#2e8b57}
+.btn.no{background:#c0392b}
+.btn.out{background:#777}
+table{width:100%;border-collapse:collapse}
+th,td{padding:8px;border-bottom:1px solid #eee;text-align:left;font-size:14px}
+.tag{display:inline-block;padding:2px 8px;border-radius:10px;background:#eef6fc;font-size:13px}
+img.th{width:60px;height:60px;object-fit:cover;border-radius:8px}
+img.rc{max-width:150px;border:1px solid #ccc;border-radius:6px;margin:6px 6px 0 0}
+.row{display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid #eee}
+.row .info{flex:1}
+</style>
+</head>
+<body>
+<h1>Aboptic &amp; services - Admin</h1>
+
+<div id='login' class='box'>
+  <input id='em' type='email' placeholder='E-mail' autocapitalize='none'>
+  <input id='pw' type='password' placeholder='Mot de passe'>
+  <button class='btn' id='go'>Connexion</button>
+  <p id='msg'></p>
+</div>
+
+<div id='app' style='display:none'>
+  <button class='btn out' id='bye'>Déconnexion</button>
+
+  <h2>Comptes</h2>
+  <div class='box' style='overflow-x:auto'><table id='stats'></table></div>
+
+  <h2>Ajouter un produit</h2>
+  <div class='box'>
+    <input id='pn' placeholder='Nom du produit'>
+    <input id='pp' type='number' inputmode='numeric' placeholder='Prix en FDJ'>
+    <select id='pc'></select>
+    <label>Photo du produit</label>
+    <input id='pf' type='file' accept='image/*'>
+    <button class='btn ok' id='padd'>Ajouter le produit</button>
+  </div>
+
+  <h2>Mes produits</h2>
+  <div class='box' id='plist'></div>
+
+  <h2>Commandes</h2>
+  <div id='olist'></div>
+</div>
+
+<script type='module'>
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/13.4.0/firebase-app.js';
+import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/13.4.0/firebase-auth.js';
+import { getFirestore, collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc } from 'https://www.gstatic.com/firebasejs/13.4.0/firebase-firestore.js';
+
+const app = initializeApp({
+  apiKey: 'AIzaSyA_jCartiuNU73OO-NWCvM0g0aPRcNRbNc',
+  authDomain: 'aboptic.firebaseapp.com',
+  projectId: 'aboptic',
+  storageBucket: 'aboptic.firebasestorage.app',
+  messagingSenderId: '538771807407',
+  appId: '1:538771807407:web:95de52ca862f2f6f26485a'
+});
+const auth = getAuth(app), db = getFirestore(app);
+const CATS = ['Lunettes','Robes','Abayas','Chaussures','Voiles','Accessoires'];
+const LABEL = {recu_envoye:'Reçu à vérifier', valide:'Commande lancée', prete:'Commande prête', expedie:'En route Égypte → Djibouti', livre:'Livrée', refuse:'Refusée'};
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const fmt = n => Number(n).toLocaleString() + ' FDJ';
+let orders = [], products = [], unsubs = [];
+
+$('pc').innerHTML = CATS.map(c => `<option>${c}</option>`).join('');
+$('go').onclick = async () => {
+  try{ await signInWithEmailAndPassword(auth, $('em').value.trim(), $('pw').value); }
+  catch(e){ $('msg').textContent = 'E-mail ou mot de passe incorrect.'; }
+};
+$('bye').onclick = () => signOut(auth);
+
+onAuthStateChanged(auth, user => {
+  unsubs.forEach(u => u()); unsubs = [];
+  $('login').style.display = user ? 'none' : 'block';
+  $('app').style.display = user ? 'block' : 'none';
+  if(!user) return;
+  const fail = () => { $('olist').innerHTML = '<p>Accès refusé : utilise l’e-mail administrateur des règles Firestore.</p>'; };
+  unsubs.push(onSnapshot(collection(db, 'orders'), s => {
+    orders = s.docs.map(d => d.data()).sort((a, b) => b.createdAt - a.createdAt);
+    renderOrders();
+  }, fail));
+  unsubs.push(onSnapshot(collection(db, 'products'), s => {
+    products = s.docs.map(d => ({id:d.id, ...d.data()}));
+    renderProducts();
+  }, fail));
+});
+
+function shrink(file){
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const s = Math.min(1, 600 / Math.max(img.width, img.height));
+        const c = document.createElement('canvas');
+        c.width = Math.round(img.width * s);
+        c.height = Math.round(img.height * s);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        resolve(c.toDataURL('image/jpeg', 0.6));
+      };
+      img.onerror = reject;
+      img.src = r.result;
+    };
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
+
+$('padd').onclick = async () => {
+  const name = $('pn').value.trim(), price = Number($('pp').value), cat = $('pc').value, f = $('pf').files[0];
+  if(!name || !price){ alert('Nom et prix obligatoires.'); return; }
+  try{
+    const ref = doc(collection(db, 'products'));
+    await setDoc(ref, {name:name, price:price, cat:cat, photo:f ? await shrink(f) : '', createdAt:Date.now()});
+    $('pn').value = ''; $('pp').value = ''; $('pf').value = '';
+  }catch(e){ alert('Erreur, réessaie.'); }
+};
+
+function renderProducts(){
+  $('plist').innerHTML = products.map(p => `<div class='row'>
+    ${p.photo ? `<img class='th' src='${p.photo}'>` : `<div class='th'></div>`}
+    <div class='info'><b>${esc(p.name)}</b><br><small>${esc(p.cat)} - ${fmt(p.price)}</small></div>
+    <button class='btn' data-id='${p.id}' data-act='price'>Prix</button>
+    <button class='btn no' data-id='${p.id}' data-act='del'>Supprimer</button></div>`).join('') || '<p>Aucun produit. Ajoutes-en un ci-dessus : les produits d’exemple du site seront remplacés.</p>';
+}
+
+function renderOrders(){
+  const now = new Date(), d = new Date(now);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  const week = d.getTime(), month = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+  const ok = o => o.status !== 'refuse' && o.status !== 'recu_envoye';
+  const calc = from => {
+    const v = orders.filter(o => ok(o) && (o.validatedAt || 0) >= from);
+    const l = orders.filter(o => o.status === 'livre' && (o.deliveredAt || 0) >= from);
+    return {n:v.length, a:v.reduce((s, o) => s + o.part1, 0), b:l.reduce((s, o) => s + o.part2, 0)};
+  };
+  const w = calc(week), m = calc(month);
+  const due = orders.filter(o => ok(o) && o.status !== 'livre').reduce((s, o) => s + o.part2, 0);
+  $('stats').innerHTML = `
+    <tr><th></th><th>Cette semaine</th><th>Ce mois-ci</th></tr>
+    <tr><td>Commandes validées</td><td>${w.n}</td><td>${m.n}</td></tr>
+    <tr><td>70 % encaissés (WAAFI)</td><td>${fmt(w.a)}</td><td>${fmt(m.a)}</td></tr>
+    <tr><td>30 % encaissés (livraison)</td><td>${fmt(w.b)}</td><td>${fmt(m.b)}</td></tr>
+    <tr><td><b>Total encaissé</b></td><td><b>${fmt(w.a + w.b)}</b></td><td><b>${fmt(m.a + m.b)}</b></td></tr>
+    <tr><td>30 % restant à encaisser</td><td colspan='2'>${fmt(due)}</td></tr>
+    <tr><td>Reçus à vérifier</td><td colspan='2'>${orders.filter(o => o.status === 'recu_envoye').length}</td></tr>`;
+
+  $('olist').innerHTML = orders.map(o => {
+    const items = (o.items || []).map(i => esc(i.name) + ' x ' + esc(i.qty)).join('<br>');
+    const pic = (v, t) => (v && String(v).startsWith('data:image/')) ? `<a href='${v}' target='_blank'><img class='rc' src='${v}' title='${t}'></a>` : '';
+    const b = (act, txt, cls) => `<button class='btn ${cls || ''}' data-id='${esc(o.id)}' data-act='${act}'>${txt}</button>`;
+    let btn = '';
+    if(o.status === 'recu_envoye') btn = b('valide', 'Valider le reçu', 'ok') + b('refuse', 'Refuser', 'no');
+    if(o.status === 'valide') btn = b('prete', 'Commande prête', 'ok');
+    if(o.status === 'prete') btn = b('expedie', 'En route vers Djibouti', 'ok');
+    if(o.status === 'expedie') btn = b('livre', 'Livrée, 30 % encaissés', 'ok');
+    return `<div class='box'>
+      <b>${new Date(o.createdAt).toLocaleDateString('fr-FR')}</b> <span class='tag'>${LABEL[o.status] || esc(o.status)}</span><br>
+      ${esc(o.name)} - ${esc(o.phone)}<br>Quartier : ${esc(o.quartier || o.address)}<br><br>
+      ${items}<br><br>
+      Total ${fmt(o.total)} : 70 % = ${fmt(o.part1)}, 30 % = ${fmt(o.part2)}<br>
+      ${pic(o.receipt, 'Reçu')}${pic(o.rxPhoto, 'Ordonnance')}<br>${btn}</div>`;
+  }).join('') || '<p>Aucune commande pour le moment.</p>';
+}
+
+document.addEventListener('click', async e => {
+  const b = e.target.closest('[data-act]');
+  if(!b) return;
+  const act = b.dataset.act, id = b.dataset.id;
+  try{
+    if(act === 'price'){
+      const v = prompt('Nouveau prix en FDJ :');
+      if(v && Number(v) > 0) await updateDoc(doc(db, 'products', id), {price:Number(v)});
+    } else if(act === 'del'){
+      if(confirm('Supprimer ce produit ?')) await deleteDoc(doc(db, 'products', id));
+    } else {
+      const patch = {status:act};
+      if(act === 'valide') patch.validatedAt = Date.now();
+      if(act === 'livre') patch.deliveredAt = Date.now();
+      await updateDoc(doc(db, 'orders', id), patch);
+    }
+  }catch(err){ alert('Erreur, réessaie.'); }
+});
+</script>
+</body>
+</html>
